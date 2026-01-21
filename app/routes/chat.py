@@ -5,7 +5,7 @@ from app.agent.wilmer_agent import get_agent
 import json
 import asyncio
 from typing import AsyncGenerator
-
+from langchain_core.messages import HumanMessage, AIMessage
 
 router = APIRouter()
 
@@ -14,25 +14,29 @@ async def generate_chat_stream(message: str, conversation_history: list) -> Asyn
     """
     Generate streaming chat response compatible with Vercel AI SDK.
     
+    Uses the Vercel AI SDK Data Stream Protocol format:
+    - Text chunks: 0:"token"
+    - Finish: d:{"finishReason":"stop"}
+    
     Args:
         message: User's message
         conversation_history: Previous conversation messages
         
     Yields:
-        Server-Sent Events formatted strings
+        Vercel AI SDK formatted stream chunks
     """
     try:
         agent = get_agent()
-        
+
         # Format conversation history for the agent
-        chat_history = ""
+        chat_history = []
         for msg in conversation_history:
             role = msg.role
             content = msg.content
             if role == "user":
-                chat_history += f"Usuario: {content}\n"
+                chat_history.append(HumanMessage(content=content))
             elif role == "assistant":
-                chat_history += f"Dr. Wilmer Gálvez: {content}\n"
+                chat_history.append(AIMessage(content=content))
         
         # Prepare input for the agent
         agent_input = {
@@ -51,36 +55,26 @@ async def generate_chat_stream(message: str, conversation_history: list) -> Asyn
         # Extract the final output
         output = result.get("output", "")
         
-        # Stream the response token by token
-        # Simulate token-by-token streaming by splitting into words
+        # Stream the response token by token using Vercel AI SDK format
+        # Format: 0:"token" (0 = text type)
         words = output.split()
         
         for i, word in enumerate(words):
             # Add space before word except for the first one
             token = word if i == 0 else f" {word}"
             
-            # Format as Vercel AI SDK compatible event
-            event_data = {
-                "type": "text",
-                "content": token
-            }
-            
-            yield f"data: {json.dumps(event_data)}\n\n"
+            # Vercel AI SDK Data Stream Protocol: 0:"text_content"
+            yield f'0:{json.dumps(token)}\n'
             
             # Small delay to simulate streaming
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.02)
         
-        # Send completion event
-        done_event = {"type": "done"}
-        yield f"data: {json.dumps(done_event)}\n\n"
+        # Send finish event: d:{"finishReason":"stop"}
+        yield f'd:{json.dumps({"finishReason": "stop"})}\n'
         
     except Exception as e:
-        # Send error event
-        error_event = {
-            "type": "error",
-            "error": str(e)
-        }
-        yield f"data: {json.dumps(error_event)}\n\n"
+        # Send error event: 3:"error message"
+        yield f'3:{json.dumps(str(e))}\n'
 
 
 @router.post("/api/chat")

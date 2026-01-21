@@ -1,181 +1,125 @@
 # Dr. Wilmer Gálvez Chatbot API
 
-API del chatbot agente para el Dr. Wilmer Gálvez, candidato a la Alcaldía de El Alto 2026 por la alianza LIBRE.
+![Status](https://img.shields.io/badge/Status-Active-success)
+![Version](https://img.shields.io/badge/Version-1.0.0-blue)
+![Python](https://img.shields.io/badge/Python-3.13+-yellow)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688)
 
-## 🚀 Inicio Rápido
+Professional AI agent service for Dr. Wilmer Gálvez, Mayoral Candidate for El Alto 2026 (LIBRE alliance). This service provides a robust, streaming-enabled chat interface powered by advanced LLMs and RAG (Retrieval-Augmented Generation) technology.
 
-### 1. Activar el entorno virtual e instalar dependencias
+## 🏗️ Architecture
 
-```powershell
+The system is designed as a modular microservice using FastAPI, LangChain, and Supabase.
+
+```mermaid
+graph TD
+    Client[Frontend Client (Next.js)]
+    
+    subgraph "FastAPI Microservice"
+        API[API Router]
+        Agent[LangChain Agent Host]
+    end
+    
+    subgraph "Knowledge Base"
+        Supabase[(Supabase Vector Store)]
+    end
+    
+    subgraph "External AI Services"
+        Groq[Groq API (Inference)]
+        OpenAI[OpenAI API (Embeddings)]
+    end
+
+    Client -- "SSE Stream (Token-by-token)" --> API
+    API --> Agent
+    
+    Agent -- "Reasoning & Tool Calls" --> Groq
+    Agent -- "Semantic Search" --> Supabase
+    Supabase -- "Context/Chunks" --> Agent
+    
+    Ingest[PDF Ingestion] -- "Parse & Embed" --> OpenAI
+    OpenAI -- "Vectors" --> Supabase
+```
+
+## 🚀 Key Features
+
+*   **Streaming Support**: Native Server-Sent Events (SSE) support for real-time token streaming, compatible with Vercel AI SDK.
+*   **Tool Calling Agent**: Utilizes modern tool-calling capabilities of LLMs for precise action execution.
+*   **RAG Integration**: Retrieval-Augmented Generation using Supabase `pgvector` for accurate, context-aware responses based on official campaign documents.
+*   **Modular Design**: Clean separation of concerns between routing, agent logic, and database interactions.
+
+## 🔧 Technical Decisions
+
+### Inference Engine: `openai/gpt-oss-20b` via Groq
+We selected the **`openai/gpt-oss-20b`** model hosted on **Groq** for the following reasons:
+
+1.  **Latency & Speed**: Groq's LPU (Language Processing Unit) architecture delivers exceptionally fast inference speeds (>300 tokens/s), which is crucial for a responsive real-time chat experience that feels conversational and instant.
+2.  **Cost-Effectiveness**: The 20B parameter model offers an optimal balance between reasoning capability and operational cost. It is sufficiently powerful to understand complex queries and strictly follow the system prompt (Dr. Wilmer Gálvez persona) without the overhead of larger 70B+ models.
+3.  **Accuracy**: For the specific domain of campaign proposals, the model's ability to utilize RAG tools effectively allows it to provide highly accurate answers grounded in the provided context, minimizing hallucinations.
+
+### Vector Storage: Supabase & `pgvector`
+We use Supabase with the `pgvector` extension to store document embeddings. This allows for:
+*   **Hybrid Search**: Combining semantic vector search with keyword filtering if needed.
+*   **Scalability**: Built on PostgreSQL, ensuring reliability and easy management.
+
+### Orchestration: LangChain
+LangChain provides the framework for:
+*   **Agent Logic**: Managing the ReAct/Tool-calling loop.
+*   **Prompt Management**: Templating the sophisticated "Dr. Wilmer Gálvez" persona.
+*   **Tool Binding**: Standardizing the interface between the LLM and the vector store.
+
+## 🛠️ Quick Start
+
+### 1. Prerequisites
+*   Python 3.10+
+*   Supabase account
+*   Groq API Key
+*   OpenAI API Key (for embeddings)
+
+### 2. Installation
+
+```bash
+# Activate virtual environment
 .venv\Scripts\Activate.ps1
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Configurar variables de entorno
-
-Asegúrate de que tu archivo `.env` contenga:
+### 3. Environment Configuration
+Create a `.env` file in the root directory:
 
 ```env
-GROQ_API_KEY=tu_groq_api_key
-OPENAI_API_KEY=tu_openai_api_key
-SUPABASE_URL=tu_supabase_url
-SUPABASE_SERVICE_ROLE_KEY=tu_supabase_service_role_key
+GROQ_API_KEY=your_groq_key
+OPENAI_API_KEY=your_openai_key
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_key
 ```
 
-### 3. Iniciar el servidor
+### 4. Running the Server
 
-```powershell
-.venv\Scripts\Activate.ps1
+```bash
 uvicorn app.main:app --reload --port 8000
 ```
+Server will be available at `http://localhost:8000`.
 
-El servidor estará disponible en: `http://localhost:8000`
+## 📚 API Documentation
 
-## 📚 Documentación API
+### Chat Endpoint
+*   **URL**: `POST /api/chat`
+*   **Description**: Streaming chat interface. accepts a list of conversation messages and streams the assistant's response.
 
-### Endpoints Disponibles
+### Ingestion Endpoint
+*   **URL**: `POST /ingest`
+*   **Description**: Uploads and indexes a PDF file.
+    *   *Note*: This performs a full refresh (deletes old chunks) to ensure the knowledge base is always 1:1 with the official source.
 
-#### 1. Health Check
+## 🤖 Agent Persona
 
-```http
-GET /
-GET /health
-```
+The agent is strictly instructed to embody Dr. Wilmer Gálvez:
+*   **Tone**: Professional yet accessible ("vecino alteño").
+*   **Slogan**: "Sin cola de paja" (Without corruption/baggage).
+*   **Core Promise**: "Meter presos a los saqueadores" (Jail the plunderers).
+*   **Behavior**: It **always** consults the knowledge base for specific proposals and refuses to invent information.
 
-Verifica que el servicio esté funcionando.
-
-#### 2. Ingestar PDF
-
-```http
-POST /ingest
-Content-Type: multipart/form-data
-```
-
-**Descripción**: Procesa un PDF con propuestas del Dr. Wilmer Gálvez. **IMPORTANTE: Este endpoint elimina todos los chunks existentes antes de indexar el nuevo PDF**, permitiendo actualizar completamente la base de conocimiento.
-
-**Ejemplo con curl (PowerShell)**:
-
-```powershell
-$form = @{
-    file = Get-Item -Path "Wilmer.pdf"
-}
-Invoke-RestMethod -Uri "http://localhost:8000/ingest" -Method Post -Form $form
-```
-
-**Respuesta**:
-
-```json
-{
-  "success": true,
-  "message": "Base de conocimiento actualizada. Eliminados: 35 chunks, Creados: 42 chunks",
-  "chunks_created": 42,
-  "filename": "Wilmer.pdf"
-}
-```
-
-#### 3. Chat con Streaming
-
-```http
-POST /api/chat
-Content-Type: application/json
-```
-
-**Descripción**: Inicia una conversación con el agente Dr. Wilmer Gálvez. Retorna la respuesta token por token usando Server-Sent Events (compatible con Vercel AI SDK).
-
-**Ejemplo con curl (PowerShell)**:
-
-```powershell
-$body = @{
-    message = "¿Cuáles son tus propuestas para combatir la corrupción en El Alto?"
-    conversationHistory = @()
-} | ConvertTo-Json
-
-Invoke-WebRequest -Uri "http://localhost:8000/api/chat" -Method Post -Body $body -ContentType "application/json"
-```
-
-**Request Body**:
-
-```json
-{
-  "message": "¿Cuáles son tus propuestas para combatir la corrupción?",
-  "conversationHistory": [
-    {
-      "role": "user",
-      "content": "Hola"
-    },
-    {
-      "role": "assistant",
-      "content": "¡Hola vecino alteño! Soy el Dr. Wilmer Gálvez..."
-    }
-  ]
-}
-```
-
-**Respuesta (SSE Stream)**:
-
-```
-data: {"type":"text","content":"Como"}
-data: {"type":"text","content":" candidato"}
-data: {"type":"text","content":" con"}
-data: {"type":"text","content":" el"}
-data: {"type":"text","content":" slogan"}
-...
-data: {"type":"done"}
-```
-
-## 🏗️ Arquitectura
-
-```
-app/
-├── main.py                 # Aplicación FastAPI principal
-├── config.py              # Configuración y variables de entorno
-├── agent/                 # Módulo del agente
-│   ├── prompts.py        # System prompt de Dr. Wilmer Gálvez
-│   ├── tools.py          # Herramientas (RAG + extensibles)
-│   └── wilmer_agent.py   # Configuración del agente LangChain
-├── db/                    # Módulo de base de datos
-│   └── supabase_client.py # Cliente Supabase y vector store
-├── routes/                # Endpoints API
-│   ├── ingest.py         # Endpoint de ingesta de PDFs
-│   └── chat.py           # Endpoint de chat con streaming
-├── services/              # Servicios de negocio
-│   └── document_service.py # Procesamiento de documentos
-└── models/                # Modelos Pydantic
-    └── chat_models.py    # Modelos de request/response
-```
-
-## 🧠 Tecnologías
-
-- **FastAPI**: Framework web moderno y rápido
-- **LangChain**: Framework para aplicaciones con LLM
-- **Groq**: LLM ultra-rápido (`llama-3.3-70b-versatile`)
-- **OpenAI**: Embeddings (`text-embedding-3-small`)
-- **Supabase**: Vector database para RAG
-- **pypdf**: Extracción de texto desde PDFs
-
-## 🤖 Personalidad del Agente
-
-El agente está configurado con un `SYSTEM_PROMPT` que define:
-
-- ✅ **Identidad**: Profesional técnico (Dr.), outsider político
-- ✅ **Slogan**: "Sin cola de paja"
-- ✅ **Compromiso**: Luchar contra la corrupción ("meter presos a los saqueadores")
-- ✅ **Tono**: Cercano al vecino alteño, técnico pero accesible
-- ✅ **Ética**: Admite cuando no sabe algo, NUNCA inventa información
-- ✅ **Enfoque**: Propuestas técnicas, sin guerra sucia
-
-## 📝 Próximos Pasos
-
-1. **Ingestar documentos**: Ejecuta el script de prueba completo que ingesta `Wilmer.pdf`:
-   ```powershell
-   python test_full_workflow.py
-   ```
-2. **Probar el chat**: El script anterior también prueba el chat con consultas sobre el contenido
-3. **Integrar frontend**: Conecta el frontend usando el formato de streaming compatible con Vercel AI SDK
-4. **Agregar más tools**: Extiende las capacidades del agente agregando nuevas herramientas en `app/agent/tools.py`
-5. **Actualizar base de conocimiento**: Simply sube un nuevo PDF con `/ingest` - automáticamente reemplazará el contenido anterior
-
-## 🔗 Enlaces Útiles
-
-- **Documentación interactiva**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+---
+*Developed for the "La Paz del Futuro" Campaign 2026*

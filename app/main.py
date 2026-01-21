@@ -21,6 +21,7 @@ app.add_middleware(
 # Include routers
 app.include_router(ingest.router, tags=["Ingestion"])
 app.include_router(chat.router, tags=["Chat"])
+app.include_router(chat.router, tags=["Chat"])
 
 
 @app.get("/")

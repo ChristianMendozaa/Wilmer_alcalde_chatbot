@@ -17,9 +17,15 @@ class ChatRequest(BaseModel):
     )
 
 
+class ChatResponse(BaseModel):
+    """Response model for synchronous chat endpoint."""
+    output: str = Field(..., description="Agent's response")
+
+
 class IngestResponse(BaseModel):
     """Response model for document ingestion."""
     success: bool
     message: str
     chunks_created: int
     filename: str
+
